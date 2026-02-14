@@ -1,45 +1,40 @@
 #include <Arduino.h>
 
 #define PIEZO_PIN 34
-const unsigned long SAMPLE_INTERVAL_US = 250; 
-unsigned long lastSampleTime = 0;
+const int SAMPLES_PER_GESTURE = 200; 
+const int SAMPLING_PERIOD_MS = 2; // 500Hz sampling
+const int THRESHOLD = 100;
 
-// Filter & Detection
-float filteredValue = 0;
-const float alpha = 0.15; 
-const int THRESHOLD = 100;       // Adjust this based on your tap strength
-const int LOCKOUT_TIME_MS = 150; // Ignore vibrations for 150ms after a tap
-unsigned long lastTapTime = 0;
+int dataBuffer[SAMPLES_PER_GESTURE];
+bool isRecording = false;
 
 void setup() {
     Serial.begin(115200);
     analogReadResolution(12);
-    Serial.println("System Ready. Tap the surface!");
+    Serial.println("READY TO LOG. Tap to start capture...");
 }
 
 void loop() {
-    unsigned long currentTimeUS = micros();
-    unsigned long currentTimeMS = millis();
+    int val = analogRead(PIEZO_PIN);
 
-    // 1. Fixed Frequency Sampling
-    if (currentTimeUS - lastSampleTime >= SAMPLE_INTERVAL_US) {
-        lastSampleTime = currentTimeUS;
-
-        int rawValue = analogRead(PIEZO_PIN);
-        filteredValue = (alpha * rawValue) + ((1.0 - alpha) * filteredValue);
-
-        // 2. Peak Detection Logic
-        if (filteredValue > THRESHOLD) {
-            // Check if enough time has passed since the last tap (Lockout)
-            if (currentTimeMS - lastTapTime > LOCKOUT_TIME_MS) {
-                
-                // --- ACTION START ---
-                Serial.print("!!! GHOST TAP DETECTED !!! Strength: ");
-                Serial.println((int)filteredValue);
-                // --- ACTION END ---
-
-                lastTapTime = currentTimeMS; // Reset the timer
-            }
+    // Trigger capture when signal crosses threshold
+    if (val > THRESHOLD && !isRecording) {
+        isRecording = true;
+        
+        // Capture the window
+        for (int i = 0; i < SAMPLES_PER_GESTURE; i++) {
+            dataBuffer[i] = analogRead(PIEZO_PIN);
+            delay(SAMPLING_PERIOD_MS); 
         }
+
+        // Print the data in CSV format for Edge Impulse
+        Serial.println("---START DATA---");
+        for (int i = 0; i < SAMPLES_PER_GESTURE; i++) {
+            Serial.println(dataBuffer[i]);
+        }
+        Serial.println("---END DATA---");
+
+        isRecording = false;
+        Serial.println("Capture complete. Ready for next...");
     }
 }
